@@ -1,0 +1,262 @@
+name: cicd
+# One pipeline: Terraform (infra) -> build + scan + push images -> update manifests -> ArgoCD deploy -> URL
+on:
+  push:
+    branches: [main]
+    paths: ["terraform/**", "services/**", "frontend/**", ".github/workflows/cicd.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cicd
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ---------------- 1) Infrastructure (state stored in S3, see terraform/backend.tf) ----------------
+  infra:
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_db_username: ${{ secrets.DB_USERNAME }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # terraform.tfvars is gitignored, so CI rebuilds it from the optional TFVARS secret.
+      - name: Write terraform.tfvars from secret
+        env:
+          TFVARS: ${{ secrets.TFVARS }}
+        run: |
+          if [ -n "$TFVARS" ]; then printf '%s\n' "$TFVARS" > terraform.tfvars; fi
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -input=false -out=tfplan
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  # ---------------- 2) Images + deploy ----------------
+  prepare:
+    needs: infra
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.id.outputs.registry }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: id
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "registry=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: auth,     context: services, args: "SERVICE=auth" }
+          - { name: patient,  context: services, args: "SERVICE=patient" }
+          - { name: billing,  context: services, args: "SERVICE=billing" }
+          - { name: frontend, context: frontend, args: "" }
+    env:
+      IMAGE: ${{ needs.prepare.outputs.registry }}/hospital-management-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create ECR repository if missing
+        run: |
+          REPO=hospital-management-${{ matrix.name }}
+          aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "$REPO" \
+              --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256
+
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (local, not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          build-args: ${{ matrix.args }}
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+      - name: Trivy scan (fails on fixable CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Tag + push to ECR (only if scan passed)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          build-args: ${{ matrix.args }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+
+  update-manifests:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ${{ needs.prepare.outputs.registry }}
+      GH_USERNAME: ${{ secrets.GH_USERNAME || github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write ECR image URLs, AWS account id and GitHub username into manifests
+        run: |
+          sed -i -E "s|image: [^ ]+/(hospital-management-[a-z]+):.*|image: ${REGISTRY}/\1:${GITHUB_SHA}|" k8s/*.yaml
+          sed -i -E "s/ACCOUNT_ID|[0-9]{12}/${REGISTRY%%.*}/g" k8s/config.yaml
+          sed -i -E "s|github.com/[^/]+/hospital-management.git|github.com/${GH_USERNAME}/hospital-management.git|" argocd/application.yaml
+      - name: Commit manifests (ArgoCD picks this up)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s argocd
+          git diff --cached --quiet || { git commit -m "ci: deploy ${GITHUB_SHA::7} [skip ci]"; git pull --rebase origin main; git push; }
+
+  # Final job: bootstrap ArgoCD, deploy everything, wait, and PRINT THE APPLICATION URL
+  deploy:
+    needs: update-manifests
+    runs-on: ubuntu-latest
+    outputs:
+      app_url: ${{ steps.url.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main                  # includes the manifest commit made above
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for infrastructure (EKS, RDS primaries + replicas, IAM role)
+        run: |
+          for i in $(seq 1 120); do
+            OK=1
+            [ "$(aws eks describe-cluster --name hms-eks --query cluster.status --output text 2>/dev/null)" = "ACTIVE" ] || OK=0
+            for d in auth patient billing; do
+              for n in ${d}db ${d}db-replica; do
+                [ "$(aws rds describe-db-instances --db-instance-identifier hms-$n --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null)" = "available" ] || OK=0
+              done
+            done
+            aws iam get-role --role-name hms-app >/dev/null 2>&1 || OK=0
+            echo "attempt $i: infrastructure ready=$OK"
+            [ $OK = 1 ] && break
+            sleep 30
+          done
+          [ $OK = 1 ] || { echo "Infrastructure not ready - check the terraform-infra run"; exit 1; }
+
+      - name: Connect to EKS
+        run: aws eks update-kubeconfig --name hms-eks --region "$AWS_REGION"
+
+      - name: Install ArgoCD (idempotent)
+        run: |
+          kubectl create ns argocd --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+          kubectl wait --for=condition=established --timeout=120s crd/applications.argoproj.io
+          kubectl -n argocd rollout status deploy/argocd-repo-server --timeout=300s
+          kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
+
+      - name: Create app secret from GitHub secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          kubectl create ns hms --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n hms create secret generic hms-secrets \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=ADMIN_EMAIL="$ADMIN_EMAIL" \
+            --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create DB connection secrets (RDS endpoints discovered automatically)
+        env:
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          for d in auth patient billing; do
+            RW=$(aws rds describe-db-instances --db-instance-identifier hms-${d}db --query 'DBInstances[0].Endpoint.Address' --output text)
+            RO=$(aws rds describe-db-instances --db-instance-identifier hms-${d}db-replica --query 'DBInstances[0].Endpoint.Address' --output text)
+            echo "${d}: write=$RW read=$RO"
+            kubectl -n hms create secret generic ${d}db-conn \
+              --from-literal=DB_RW_HOST="$RW" --from-literal=DB_RO_HOST="$RO" \
+              --from-literal=DB_NAME=app \
+              --from-literal=DB_USER="$DB_USERNAME" --from-literal=DB_PASS="$DB_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+      - name: Deploy with ArgoCD
+        run: kubectl apply -f argocd/application.yaml
+
+      - name: Wait for deployment and get application URL
+        id: url
+        run: |
+          for i in $(seq 1 60); do
+            H=$(kubectl -n argocd get app hospital-management -o jsonpath='{.status.health.status}' 2>/dev/null || true)
+            echo "ArgoCD app health: ${H:-pending}"
+            [ "$H" = "Healthy" ] && break
+            sleep 20
+          done
+          HOST=""
+          for i in $(seq 1 40); do
+            HOST=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            [ -n "$HOST" ] && break
+            sleep 15
+          done
+          [ -z "$HOST" ] && { echo "Load balancer not ready yet - run: kubectl -n ingress-nginx get svc"; exit 1; }
+          URL="http://$HOST"
+          for i in $(seq 1 30); do   # wait for DNS/LB to answer
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/" || true)" = "200" ] && break
+            sleep 10
+          done
+          echo "app_url=$URL" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Hospital Management deployed"
+            echo ""
+            echo "**Application URL:** $URL"
+            echo ""
+            echo "Log in with the ADMIN_EMAIL / ADMIN_PASSWORD secrets."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=============================================="
+          echo " APPLICATION URL: $URL"
+          echo "=============================================="

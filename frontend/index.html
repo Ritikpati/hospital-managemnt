@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hospital Management</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f7fa;color:#1d2733}
+header{background:#0b6e8a;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;flex:1;margin:0}
+main{max-width:1000px;margin:16px auto;padding:0 12px}
+section{background:#fff;border-radius:8px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px #0002}
+input,select,textarea,button{font:inherit;padding:7px;margin:3px 0;border:1px solid #bbb;border-radius:5px}
+button{background:#0b6e8a;color:#fff;border:0;cursor:pointer;padding:7px 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.grid input,.grid select{width:100%;box-sizing:border-box}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px;font-size:14px;text-align:left}
+label.cb{margin-right:12px}
+</style></head>
+<body>
+<header><h1 id="title"></h1>
+ <select id="lang" onchange="lang=this.value;localStorage.lang=lang;render()">
+  <option value="en">English</option><option value="hi">हिन्दी</option><option value="te">తెలుగు</option></select>
+ <button id="logout" onclick="logout()"></button></header>
+<main id="app"></main>
+<script>
+const L={
+en:{title:'Hospital Management',login:'Login',email:'Email',password:'Password',first_name:'First name',last_name:'Last name',address:'Address',city:'City',state:'State',age:'Age',mobile:'Mobile',gender:'Gender',blood_group:'Blood group',occupation:'Occupation',heard_about_us:'How did you hear about us?',referred_by:'Referred by',diseases:'Type of disease',save:'Save',register:'Register patient',weekly:'Weekly record (5 weeks)',symptoms:'Symptoms',week:'Week',photo:'Photo capture',token:'Generate token',queue:"Today's queue",payment:'Payment',amount:'Amount',admin:'Admin page',employee:'Employee page',logout:'Logout',report:'Weekly report',users:'Users',name:'Name',role:'Role',status:'Status',patient:'Patient',adduser:'Add user'},
+hi:{title:'अस्पताल प्रबंधन',login:'लॉगिन',email:'ईमेल',password:'पासवर्ड',first_name:'पहला नाम',last_name:'अंतिम नाम',address:'पता',city:'शहर',state:'राज्य',age:'उम्र',mobile:'मोबाइल',gender:'लिंग',blood_group:'रक्त समूह',occupation:'व्यवसाय',heard_about_us:'हमारे बारे में कैसे सुना?',referred_by:'रेफर किया',diseases:'बीमारी का प्रकार',save:'सहेजें',register:'मरीज़ पंजीकरण',weekly:'साप्ताहिक रिकॉर्ड (5 सप्ताह)',symptoms:'लक्षण',week:'सप्ताह',photo:'फोटो लें',token:'टोकन बनाएं',queue:'आज की कतार',payment:'भुगतान',amount:'राशि',logout:'लॉगआउट',status:'स्थिति',patient:'मरीज़'},
+te:{title:'ఆసుపత్రి నిర్వహణ',login:'లాగిన్',email:'ఈమెయిల్',password:'పాస్‌వర్డ్',first_name:'మొదటి పేరు',last_name:'ఇంటి పేరు',address:'చిరునామా',city:'నగరం',state:'రాష్ట్రం',age:'వయస్సు',mobile:'మొబైల్',gender:'లింగం',blood_group:'రక్త వర్గం',occupation:'వృత్తి',heard_about_us:'మా గురించి ఎలా తెలిసింది?',referred_by:'సిఫార్సు చేసినవారు',diseases:'వ్యాధి రకం',save:'సేవ్',register:'రోగి నమోదు',weekly:'వారపు రికార్డు (5 వారాలు)',symptoms:'లక్షణాలు',week:'వారం',photo:'ఫోటో తీయండి',token:'టోకెన్ సృష్టించు',queue:'ఈరోజు క్యూ',payment:'చెల్లింపు',amount:'మొత్తం',logout:'లాగౌట్',status:'స్థితి',patient:'రోగి'}};
+const DIS=['Jaundice','Hepatitis B','Fatty liver','Liver cirrhosis','Others'];
+const TXT=['first_name','last_name','address','city','state','age','mobile','email','occupation','heard_about_us','referred_by'];
+let tok=localStorage.tok||'',role=localStorage.role||'',lang=localStorage.lang||'en',view=role==='admin'?'admin':'employee',pts=[];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const t=k=>(L[lang]&&L[lang][k])||L.en[k]||k;
+const act=fn=>async e=>{e.preventDefault();try{await fn(e)}catch(x){alert(x.message)}};
+async function api(path,o={}){
+ o.headers={Authorization:'Bearer '+tok,...(o.headers||{})};
+ if(o.json){o.headers['Content-Type']='application/json';o.body=JSON.stringify(o.json);o.method=o.method||'POST'}
+ const r=await fetch(path,o),d=await r.json().catch(()=>({}));
+ if(!r.ok){if(r.status===401&&tok)logout();throw new Error(typeof d.detail==='string'?d.detail:r.statusText)}
+ return d}
+function logout(){localStorage.removeItem('tok');localStorage.removeItem('role');tok='';role='';render()}
+async function login(){
+ try{const d=await api('/auth/login',{json:{email:$('le').value,password:$('lp').value}});
+  tok=d.token;role=d.role;view=role==='admin'?'admin':'employee';localStorage.tok=tok;localStorage.role=role;render()}
+ catch(x){$('err').textContent=x.message}}
+const sel=()=>pts.map(p=>`<option value="${p.id}">${esc(p.first_name+' '+p.last_name)} (#${p.id})</option>`).join('');
+async function render(){
+ $('lang').value=lang;$('title').textContent=t('title');$('logout').textContent=t('logout');$('logout').hidden=!tok;
+ if(!tok){$('app').innerHTML=`<section><h3>${t('login')}</h3><input id="le" placeholder="${t('email')}"><br><input id="lp" type="password" placeholder="${t('password')}"><br><button onclick="login()">${t('login')}</button> <b id="err" style="color:#b00"></b></section>`;return}
+ try{pts=await api('/patients')}catch(x){return}
+ const nav=role==='admin'?`<p><button onclick="view='employee';render()">${t('employee')}</button> <button onclick="view='admin';render()">${t('admin')}</button></p>`:'';
+ $('app').innerHTML=nav+(view==='admin'?adminHTML():employeeHTML());
+ if(view==='admin')loadAdmin();else loadQueue()}
+function employeeHTML(){return `
+<section><h3>${t('register')}</h3><form onsubmit="savePatient(event)"><div class="grid">
+${TXT.map(k=>`<input name="${k}" placeholder="${t(k)}" ${['first_name','last_name','age','mobile'].includes(k)?'required':''} ${k==='age'?'type=number':''}>`).join('')}
+<select name="gender"><option value="">${t('gender')}</option><option>Male</option><option>Female</option><option>Other</option></select>
+<select name="blood_group"><option value="">${t('blood_group')}</option>${['A+','A-','B+','B-','O+','O-','AB+','AB-'].map(b=>`<option>${b}</option>`).join('')}</select></div>
+<p>${t('diseases')}: ${DIS.map(d=>`<label class="cb"><input type="checkbox" name="diseases" value="${d}"> ${d}</label>`).join('')}</p>
+<button>${t('save')}</button></form></section>
+<section><h3>${t('weekly')}</h3><form onsubmit="saveWeek(event)"><div class="grid">
+<select name="pid">${sel()}</select><select name="week">${[1,2,3,4,5].map(w=>`<option value="${w}">${t('week')} ${w}</option>`).join('')}</select>
+<input name="symptoms" placeholder="${t('symptoms')}"><input type="file" name="photo" accept="image/*" capture="environment"></div>
+<button>${t('save')}</button></form></section>
+<section><h3>${t('queue')}</h3><select id="tp">${sel()}</select> <button onclick="makeToken()">${t('token')}</button><div id="q"></div></section>
+<section><h3>${t('payment')}</h3><form onsubmit="pay(event)"><div class="grid"><select name="pid">${sel()}</select>
+<input name="amount" type="number" step="0.01" min="1" placeholder="${t('amount')}" required>
+<select name="method"><option>cash</option><option>card</option><option>upi</option></select></div><button>${t('save')}</button> <span id="rc"></span></form></section>`}
+function adminHTML(){return `
+<section><h3>${t('adduser')}</h3><form onsubmit="addUser(event)"><div class="grid"><input name="name" placeholder="${t('name')}" required>
+<input name="email" type="email" placeholder="${t('email')}" required><input name="password" type="password" placeholder="${t('password')}" required>
+<select name="role"><option>employee</option><option>admin</option></select></div><button>${t('save')}</button></form><div id="ut"></div></section>
+<section><h3>${t('report')}</h3><div id="wr" style="overflow:auto"></div></section>
+<section><h3>${t('payment')}</h3><div id="pt" style="overflow:auto"></div></section>`}
+const table=(h,rows)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
+async function loadQueue(){const q=await api('/queue');
+ $('q').innerHTML=table(['#',t('patient'),t('status'),''],q.map(x=>[x.token_no,esc(x.first_name+' '+x.last_name),esc(x.status),
+  ['waiting','in-progress','done'].map(s=>`<button onclick="setStatus(${x.id},'${s}')">${s}</button>`).join(' ')]))}
+async function loadAdmin(){
+ const [u,w,p]=await Promise.all([api('/auth/users'),api('/patients/weekly-report'),api('/payments')]);
+ $('ut').innerHTML=table([t('name'),t('email'),t('role')],u.map(x=>[esc(x.name),esc(x.email),esc(x.role)]));
+ $('wr').innerHTML=table([t('patient'),...[1,2,3,4,5].map(n=>t('week')+' '+n)],pts.map(pt=>[esc(pt.first_name+' '+pt.last_name),
+  ...[1,2,3,4,5].map(n=>{const r=w.find(x=>x.patient_id==pt.id&&x.week==n);return r?esc(r.symptoms)+(r.photo_url?` <a target="_blank" href="${esc(r.photo_url)}">📷</a>`:''):'-'})]));
+ $('pt').innerHTML=table(['#',t('patient'),t('amount'),'by'],p.map(x=>[x.id,esc(x.patient_name),esc(x.amount),esc(x.created_by)]))}
+window.savePatient=act(async e=>{const f=new FormData(e.target),d=Object.fromEntries(f);d.age=+d.age;d.diseases=f.getAll('diseases');d.email=d.email||null;await api('/patients',{json:d});alert('Saved');render()});
+window.saveWeek=act(async e=>{await api('/patients/'+e.target.pid.value+'/weeks',{method:'POST',body:new FormData(e.target)});alert('Saved');e.target.reset()});
+window.makeToken=async()=>{try{const r=await api('/patients/'+$('tp').value+'/token',{method:'POST'});alert('Token #'+r.token_no);loadQueue()}catch(x){alert(x.message)}};
+window.setStatus=async(id,s)=>{await api('/queue/'+id,{json:{status:s},method:'PATCH'});loadQueue()};
+window.pay=act(async e=>{const d=Object.fromEntries(new FormData(e.target)),p=pts.find(x=>x.id==d.pid);
+ const r=await api('/payments',{json:{patient_id:p.id,patient_name:p.first_name+' '+p.last_name,patient_email:p.email||null,amount:+d.amount,method:d.method}});
+ $('rc').innerHTML=`<a target="_blank" href="${esc(r.receipt_url)}">Receipt #${r.id}</a>`});
+window.addUser=act(async e=>{await api('/auth/register',{json:Object.fromEntries(new FormData(e.target))});alert('User added');loadAdmin()});
+render();
+</script></body></html>

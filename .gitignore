@@ -1,0 +1,10 @@
+.terraform/
+*.tfstate*
+tfplan
+__pycache__/
+
+# Terraform variable files (may contain secrets) - keep only the .example template
+*.tfvars
+*.tfvars.json
+!*.tfvars
+terraform.tfvars
