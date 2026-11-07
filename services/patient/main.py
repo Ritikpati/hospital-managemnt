@@ -49,6 +49,21 @@ def with_photo(rows):
     return rows
 
 
+def details_text(p, weeks=None, title="PATIENT DETAILS"):
+    addr = ", ".join(x for x in (p.get("address"), p.get("city"), p.get("state")) if x) or "-"
+    lines = [f"HOSPITAL MANAGEMENT - {title}", "",
+             f"Patient ID: {p['id']}", f"Name: {p['first_name']} {p['last_name']}",
+             f"Age / Gender: {p.get('age') or '-'} / {p.get('gender') or '-'}", f"Mobile: {p.get('mobile') or '-'}",
+             f"Blood group: {p.get('blood_group') or '-'}", f"Address: {addr}",
+             f"Conditions: {', '.join(p.get('diseases') or []) or '-'}"]
+    if weeks is not None:
+        lines += ["", "WEEKLY PROGRESS"]
+        by = {w["week"]: w for w in weeks}
+        for n in range(1, 6):
+            lines.append(f"Week {n}: " + ((by[n]["symptoms"] or "recorded") if n in by else "not recorded yet"))
+    return "\n".join(lines) + "\n"
+
+
 @app.post("/patients")
 def add_patient(p: Patient, u=Depends(current_user)):
     d = p.model_dump()
@@ -57,7 +72,9 @@ def add_patient(p: Patient, u=Depends(current_user)):
                 [*d.values(), u["sub"]], fetch=True)[0]
     if p.email:
         subscribe(p.email)
-    return row
+        notify(p.email, "Registration confirmed - Hospital Management",
+               details_text({**d, "id": row["id"]}, title="REGISTRATION CONFIRMED"))
+    return {**row, "emailed_to": p.email}
 
 
 @app.get("/patients")
@@ -76,6 +93,21 @@ def get_patient(pid: int, _=Depends(current_user)):
     if not p:
         raise HTTPException(404, "Not found")
     return {**p[0], "weeks": with_photo(read("SELECT * FROM weekly_records WHERE patient_id=%s ORDER BY week", (pid,)))}
+
+
+@app.post("/patients/{pid}/email")
+def email_details(pid: int, u=Depends(current_user)):
+    """Email the patient's details + weekly progress to the patient (if they have an email) and to the staff member."""
+    rows = write("SELECT * FROM patients WHERE id=%s", (pid,), fetch=True)
+    if not rows:
+        raise HTTPException(404, "Not found")
+    p = rows[0]
+    weeks = write("SELECT week, symptoms FROM weekly_records WHERE patient_id=%s ORDER BY week", (pid,), fetch=True)
+    text = details_text(p, weeks)
+    sent = list(dict.fromkeys(x for x in (u["sub"], p.get("email")) if x))
+    for to in sent:
+        notify(to, f"Patient details - {p['first_name']} {p['last_name']}", text)
+    return {"emailed_to": sent, "patient_has_email": bool(p.get("email"))}
 
 
 @app.post("/patients/{pid}/weeks")
