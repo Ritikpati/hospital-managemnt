@@ -1,4 +1,4 @@
-name: cicd
+name: cicd 
 # One pipeline: Terraform (infra) -> build + scan + push images -> update manifests -> ArgoCD deploy -> URL
 on:
   push:
