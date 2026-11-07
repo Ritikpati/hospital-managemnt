@@ -13,7 +13,7 @@ metadata: {name: hospital-management, namespace: argocd}
 spec:
   project: default
   source:
-    repoURL: https://github.com/Ritikpati/hospital-management.git
+    repoURL: https://github.com/Ritikpati/hospital-managemnt.git
     targetRevision: main
     path: k8s
   destination: {server: https://kubernetes.default.svc, namespace: hms}
