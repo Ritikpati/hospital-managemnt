@@ -29,7 +29,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 1) S3 bucket for the remote backend is created FIRST (idempotent)
       - name: Create S3 backend bucket
         run: |
           BUCKET="hms-tfstate-$(aws sts get-caller-identity --query Account --output text)"
@@ -48,8 +47,6 @@ jobs:
               --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
           fi
 
-      # terraform.tfvars is gitignored, so CI rebuilds it from the optional TFVARS secret.
-      # If the secret is not set, the defaults in variables.tf are used.
       - name: Write terraform.tfvars from secret
         env:
           TFVARS: ${{ secrets.TFVARS }}
@@ -60,10 +57,9 @@ jobs:
         with:
           terraform_version: 1.10.5
 
-      # 2) init -> plan -> apply, state is stored inside the S3 bucket
       - name: Terraform init
         run: |
-          terraform init \
+          terraform init -input=false \
             -backend-config="bucket=$TF_BUCKET" \
             -backend-config="key=hospital-management/terraform.tfstate" \
             -backend-config="region=$AWS_REGION" \
