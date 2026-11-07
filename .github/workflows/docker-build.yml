@@ -234,3 +234,38 @@ jobs:
           echo "=============================================="
           echo " APPLICATION URL: $URL"
           echo "=============================================="
+
+      # ---- ADDED: expose ArgoCD, then print its URL + admin login (runs only if all steps above succeeded) ----
+      - name: Expose ArgoCD and print URL + admin password
+        run: |
+          kubectl -n argocd patch svc argocd-server -p '{"spec":{"type":"LoadBalancer"}}'
+          ARGO_HOST=""
+          for i in $(seq 1 40); do
+            ARGO_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            [ -n "$ARGO_HOST" ] && break
+            sleep 15
+          done
+          [ -z "$ARGO_HOST" ] && { echo "ArgoCD load balancer not ready yet - run: kubectl -n argocd get svc argocd-server"; exit 1; }
+          ARGO_URL="https://$ARGO_HOST"
+          ARGO_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
+          [ -z "$ARGO_PASS" ] && ARGO_PASS="(initial password secret not found - it was already changed or deleted)"
+          for i in $(seq 1 30); do   # wait for the new load balancer to answer
+            [ "$(curl -sk -o /dev/null -w '%{http_code}' "$ARGO_URL/" || true)" = "200" ] && break
+            sleep 10
+          done
+          {
+            echo "## ArgoCD"
+            echo ""
+            echo "**ArgoCD URL:** $ARGO_URL"
+            echo ""
+            echo "**Username:** admin"
+            echo ""
+            echo "**Password:** $ARGO_PASS"
+            echo ""
+            echo "Your browser will warn about the certificate (it is self-signed). Choose Advanced, then Proceed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=============================================="
+          echo " ARGOCD URL     : $ARGO_URL"
+          echo " ARGOCD USER    : admin"
+          echo " ARGOCD PASSWORD: $ARGO_PASS"
+          echo "=============================================="
