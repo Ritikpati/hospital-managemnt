@@ -1,10 +1,12 @@
-name: cicd 
-# One pipeline: Terraform (infra) -> build + scan + push images -> update manifests -> ArgoCD deploy -> URL
+name: cicd
+# Runs AFTER the "terraform-infra" workflow finishes successfully:
+# build + scan + push images -> update manifests -> ArgoCD deploy -> URL
 on:
-  push:
+  workflow_run:
+    workflows: ["terraform-infra"]   # must match the "name:" in terraform.yml exactly
+    types: [completed]
     branches: [main]
-    paths: ["terraform/**", "services/**", "frontend/**", ".github/workflows/cicd.yml"]
-  workflow_dispatch:
+  workflow_dispatch:                 # you can also run it manually
 
 permissions:
   contents: write
@@ -17,43 +19,10 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
-  # ---------------- 1) Infrastructure (state stored in S3, see terraform/backend.tf) ----------------
-  infra:
-    runs-on: ubuntu-latest
-    env:
-      TF_VAR_db_username: ${{ secrets.DB_USERNAME }}
-      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-    defaults:
-      run:
-        working-directory: terraform
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      # terraform.tfvars is gitignored, so CI rebuilds it from the optional TFVARS secret.
-      - name: Write terraform.tfvars from secret
-        env:
-          TFVARS: ${{ secrets.TFVARS }}
-        run: |
-          if [ -n "$TFVARS" ]; then printf '%s\n' "$TFVARS" > terraform.tfvars; fi
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.10.5
-
-      - run: terraform init
-      - run: terraform validate
-      - run: terraform plan -input=false -out=tfplan
-      - run: terraform apply -input=false -auto-approve tfplan
-
-  # ---------------- 2) Images + deploy ----------------
+  # ---------------- 1) Images + deploy ----------------
   prepare:
-    needs: infra
+    # continue only if terraform-infra succeeded (or this was started manually)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       registry: ${{ steps.id.outputs.registry }}
@@ -139,6 +108,8 @@ jobs:
       GH_USERNAME: ${{ secrets.GH_USERNAME || github.repository_owner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Write ECR image URLs, AWS account id and GitHub username into manifests
         run: |
           sed -i -E "s|image: [^ ]+/(hospital-management-[a-z]+):.*|image: ${REGISTRY}/\1:${GITHUB_SHA}|" k8s/*.yaml
