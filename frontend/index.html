@@ -189,6 +189,16 @@ h1,h2,h3,p{margin:0}
 .toast a{color:#9fe0ea;font-weight:600}
 .loading{padding:60px;text-align:center;color:var(--muted)}
 
+.mailbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 32px;background:#fff6e0;border-bottom:1px solid #f0dcaa;color:#6b4a00;font-size:14px}
+.mailbar p{flex:1;min-width:220px}
+.ticks{list-style:none;padding:0;margin:0 0 18px;display:grid;gap:8px}
+.ticks li::before{content:"\2713";color:var(--green);font-weight:700;margin-right:10px}
+.rcpt{border:1px dashed #b9c9d0;border-radius:12px;padding:20px;background:#fff}
+.rcpt-h{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+.rcpt-h small{display:block;color:var(--muted)}
+.rcpt-amt{margin-top:18px;padding-top:14px;border-top:2px dashed #c3d2d9;display:flex;justify-content:space-between;align-items:baseline}
+.rcpt-amt b{font-size:28px}
+@media print{body *{visibility:hidden}#receiptPrint,#receiptPrint *{visibility:visible}#receiptPrint{position:fixed;left:0;top:0;width:100%;border:0}}
 @media(max-width:1000px){.cols,.cols.even{grid-template-columns:1fr}.board{grid-template-columns:1fr}}
 @media(max-width:860px){
  .auth{grid-template-columns:1fr}.auth-side{display:none}.auth-card .mob{display:flex}
@@ -197,7 +207,7 @@ h1,h2,h3,p{margin:0}
  .side .brandrow,.side-foot{display:none}
  .nav{display:flex;width:100%;justify-content:space-around}
  .nav a{flex-direction:column;gap:2px;font-size:11px;padding:6px 8px;text-align:center}
- .content{padding:18px 14px 96px}.top{padding:12px 14px}.toasts{bottom:84px;right:14px}
+ .content{padding:18px 14px 96px}.top{padding:12px 14px}.toasts{bottom:84px;right:14px}.mailbar{padding:10px 14px}
  .stats{grid-template-columns:1fr 1fr}.stat:nth-child(2){border-right:0}.stat:nth-child(-n+2){border-bottom:1px solid var(--line)}
  .fg,.kv{grid-template-columns:1fr}
  .weeks{grid-template-columns:repeat(5,minmax(78px,1fr));overflow:auto}
@@ -225,7 +235,8 @@ const ICON={
  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
  cam:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
  pulse:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
- back:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>'
+ back:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+ mail:'<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22,6 12,13 2,6"/>'
 };
 const ic=(n,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 const logo=()=>`<span class="logo">${ic('pulse',20)}</span>`;
@@ -253,6 +264,13 @@ en:{app:'Hospital Management',tagline:'Patient records, the daily queue and paym
  empty_pay:'No payments recorded yet',no_match:'No patients match your search',
  registered:'Registered',by:'By',pick_patient:'Choose a patient',
  token_made:'Token #{n} created for {p}',patient_saved:'Patient saved',week_saved:'Week {w} saved',pay_saved:'Payment saved.',user_added:'User added',receipt_link:'Open receipt #{n}',
+ account:'Account',mail_banner:'Turn on email alerts: AWS sent a confirmation email to {e}. Open it and click "Confirm subscription".',resend_mail:'Resend email',mail_done:"I've confirmed",
+ email_details:'Email details',receipt_title:'Payment receipt',print:'Print',download:'Download file',email_again:'Email again',emailed_to:'Emailed to',sent_to:'Sent to {e}',
+ no_patient_email:'This patient has no email on file, so the details were sent to you only.',test_mail:'Send test email',mail_h:'Email notifications',
+ mail_p:'Emails are sent through AWS. Each address must confirm once: AWS sends a message with a Confirm subscription link, and nothing arrives until it is clicked.',
+ mail_login:'A login alert each time you sign in',mail_receipts:'A receipt whenever you record a payment',mail_details:'Patient details when you press Email details',
+ email_hint:'Optional. Registration details and receipts are emailed here. The patient must confirm one AWS email first.',view_receipt:'Receipt',pay_done:'Payment saved',
+ mail_resent:'Confirmation email sent to {e}',mail_test_sent:'Test email sent to {e}',
  other:'Other',male:'Male',female:'Female',cash:'Cash',card_m:'Card',upi:'UPI'},
 hi:{tagline:'मरीज़ों का रिकॉर्ड, रोज़ की कतार और भुगतान - एक ही जगह।',signin:'साइन इन',signup:'खाता बनाएँ',signin_t:'वापसी पर स्वागत है',signup_t:'अपना खाता बनाएँ',email:'ईमेल पता',password:'पासवर्ड',confirm:'पासवर्ड दोबारा लिखें',fullname:'पूरा नाम',
  dashboard:'डैशबोर्ड',patients:'मरीज़',queue:'कतार',payments:'भुगतान',reports:'साप्ताहिक रिपोर्ट',users:'उपयोगकर्ता',logout:'लॉग आउट',
@@ -354,6 +372,10 @@ async function doLogin(email,password){
  const r=await api('/auth/login',{json:{email:email.trim(),password},noLogout:true});
  saveSession(r);history.replaceState(null,'','#/dashboard');await render()}
 
+const mailKey=()=>'mail_'+me();
+function mailBanner(){
+ if(store.get(mailKey()))return '';
+ return `<div class="mailbar" id="mailbar" role="status">${ic('mail',18)}<p>${t('mail_banner',{e:esc(me())})}</p><button class="btn sm" data-act="resendMail">${t('resend_mail')}</button><button class="btn ghost sm" data-act="mailDone">${t('mail_done')}</button></div>`}
 const strength=p=>{let s=0;if(p.length>=8)s++;if(/[A-Z]/.test(p)&&/[a-z]/.test(p))s++;if(/\d/.test(p)&&/[^A-Za-z0-9]|.{12,}/.test(p))s++;return p?Math.max(1,s):0};
 
 /* ---------- shell ---------- */
@@ -366,10 +388,11 @@ function shell(page,inner){
  <aside class="side">
   <div class="brandrow">${logo()}<span>${t('app')}</span></div>
   <nav class="nav">${items.map(([k,i])=>`<a href="#/${k}" class="${k===page?'on':''}">${ic(i,19)}<span>${t(k)}</span></a>`).join('')}</nav>
-  <div class="side-foot"><span class="av">${esc((S.name||'?').slice(0,2).toUpperCase())}</span><div><b>${esc(S.name)}</b><small>${esc(admin?'Administrator':'Staff')}</small></div></div>
+  <a class="side-foot" href="#/account" style="color:inherit;text-decoration:none"><span class="av">${esc((S.name||'?').slice(0,2).toUpperCase())}</span><div><b>${esc(S.name)}</b><small>${esc(admin?'Administrator':'Staff')}</small></div></a>
  </aside>
  <div class="main">
-  <header class="top"><h2>${title}</h2><span class="grow"></span>${langSel()}<button class="btn ghost sm" data-act="logout">${ic('out',16)}<span>${t('logout')}</span></button></header>
+  <header class="top"><h2>${title}</h2><span class="grow"></span>${langSel()}<a class="icon" href="#/account" aria-label="${t('account')}" title="${t('account')}">${ic('mail',19)}</a><button class="btn ghost sm" data-act="logout">${ic('out',16)}<span>${t('logout')}</span></button></header>
+  ${mailBanner()}
   <div class="content" id="content">${inner}</div>
  </div></div>`}
 
@@ -381,7 +404,7 @@ async function render(){
  if(!S.tok){root.innerHTML=authHTML();return}
  let {page,id}=route();
  if(['reports','users'].includes(page)&&S.role!=='admin'){go('#/dashboard');return}
- if(!['dashboard','patients','queue','payments','reports','users'].includes(page))page='dashboard';
+ if(!['dashboard','patients','queue','payments','reports','users','account'].includes(page))page='dashboard';
  const navPage=page;
  const rid=++renderId;
  root.innerHTML=shell(navPage==='patients'&&id?'patient':navPage,`<div class="loading">…</div>`);
@@ -394,6 +417,7 @@ async function render(){
   else if(page==='payments'){[S.pts,S.pays]=await Promise.all([api('/patients'),api('/payments')]);html=pPayments()}
   else if(page==='reports'){[S.pts,S.wrep]=await Promise.all([api('/patients'),api('/patients/weekly-report')]);html=pReports()}
   else if(page==='users'){S.users=await api('/auth/users');html=pUsers()}
+  else if(page==='account'){html=pAccount()}
   if(rid!==renderId)return;
   $('#content').innerHTML=html;
  }catch(e){
@@ -440,7 +464,7 @@ function patientForm(){
   ${field('first_name','text',t('first_name'),'required autocomplete="off"')}${field('last_name','text',t('last_name'),'required autocomplete="off"')}
   ${field('age','number',t('age'),'required min="0" max="120" inputmode="numeric"')}
   <label class="fld"><span>${t('gender')}</span><select name="gender"><option value="">${t('select')}</option><option>Male</option><option>Female</option><option>Other</option></select></label>
-  ${field('mobile','tel',t('mobile'),'required inputmode="tel" minlength="10" maxlength="15"')}${field('email','email',t('email')+' <small>(optional)</small>','')}
+  ${field('mobile','tel',t('mobile'),'required inputmode="tel" minlength="10" maxlength="15"')}<label class="fld full"><span>${t('email')} <small>(optional)</small></span><input name="email" type="email" autocomplete="off"><span class="hint">${t('email_hint')}</span></label>
   <label class="fld"><span>${t('blood_group')}</span><select name="blood_group"><option value="">${t('select')}</option>${o(BLOOD)}</select></label>
   ${field('occupation','text',t('occupation'),'')}
   <label class="fld full"><span>${t('address')}</span><input name="address" type="text" autocomplete="off"></label>
@@ -457,7 +481,7 @@ function pDetail(){
  const d=S.detail,k=(l,v,f)=>`<div class="${f?'full':''}"><small>${l}</small><span>${v?esc(v):'-'}</span></div>`;
  return `<div class="page-h"><a class="btn ghost sm" href="#/patients">${ic('back',16)}${t('back')}</a></div>
  <div class="page-h"><div class="who"><span class="av" style="width:52px;height:52px;font-size:18px">${esc(ini(d))}</span><div><h1>${esc(pname(d))}</h1><p>#${d.id} · ${t('registered')} ${fmtD(d.created_at)}</p></div></div><span class="grow"></span>
-  <div class="actions"><button class="btn ghost" data-act="token" data-id="${d.id}">${ic('clock',17)}${t('generate_token')}</button><button class="btn" data-act="payFor" data-id="${d.id}">${ic('card',17)}${t('record_payment')}</button></div></div>
+  <div class="actions"><button class="btn ghost" data-act="emailPatient" data-id="${d.id}">${ic('mail',17)}${t('email_details')}</button><button class="btn ghost" data-act="token" data-id="${d.id}">${ic('clock',17)}${t('generate_token')}</button><button class="btn" data-act="payFor" data-id="${d.id}">${ic('card',17)}${t('record_payment')}</button></div></div>
  <div class="cols">
   <div class="panel"><div class="panel-h"><h3>${t('weekly')}</h3></div><div class="panel-b" id="wkbox">${weeksHTML()}</div></div>
   <div class="panel"><div class="panel-h"><h3>${t('patient')}</h3></div><div class="panel-b"><div class="kv">
@@ -509,12 +533,12 @@ function payForm(pid){
  </div><p class="ferr" id="ferr" role="alert"></p>
  <div class="drawer-f"><button class="btn" type="submit">${t('save_payment')}</button></div></form>`}
 function payRows(){
- if(!S.pays.length)return `<tr><td colspan="6"><div class="empty"><b>${t('empty_pay')}</b></div></td></tr>`;
- return S.pays.map(x=>`<tr><td>#${x.id}</td><td>${esc(x.patient_name)}</td><td><b>${money(x.amount)}</b></td><td>${esc(x.method||'')}</td><td>${fmtD(x.created_at)}</td><td>${esc(x.created_by||'')}</td></tr>`).join('')}
+ if(!S.pays.length)return `<tr><td colspan="7"><div class="empty"><b>${t('empty_pay')}</b></div></td></tr>`;
+ return S.pays.map(x=>`<tr><td>#${x.id}</td><td>${esc(x.patient_name)}</td><td><b>${money(x.amount)}</b></td><td>${esc(x.method||'')}</td><td>${fmtD(x.created_at)}</td><td>${esc(x.created_by||'')}</td><td><button class="btn ghost sm" data-act="receipt" data-id="${x.id}">${t('view_receipt')}</button></td></tr>`).join('')}
 function pPayments(){
  const tot=S.pays.reduce((a,x)=>a+Number(x.amount),0);
- return `<div class="page-h"><div><h1>${t('payments')}</h1><p>${t('total')}: <b>${money(tot)}</b></p></div></div>
- <div class="cols"><div class="panel"><div class="scroll"><table class="tbl"><thead><tr><th>${t('receipt')}</th><th>${t('patient')}</th><th>${t('amount')}</th><th>${t('method')}</th><th>${t('date')}</th><th>${t('received_by')}</th></tr></thead><tbody id="paybody">${payRows()}</tbody></table></div></div>
+ return `<div class="page-h"><div><h1>${t('payments')}</h1><p>${t('total')}: <b id="paytot">${money(tot)}</b></p></div></div>
+ <div class="cols"><div class="panel"><div class="scroll"><table class="tbl"><thead><tr><th>${t('receipt')}</th><th>${t('patient')}</th><th>${t('amount')}</th><th>${t('method')}</th><th>${t('date')}</th><th>${t('received_by')}</th><th></th></tr></thead><tbody id="paybody">${payRows()}</tbody></table></div></div>
  <div class="panel"><div class="panel-h"><h3>${t('record_payment')}</h3></div><div class="panel-b">${payForm('')}</div></div></div>`}
 
 /* ----- admin ----- */
@@ -530,6 +554,27 @@ function pUsers(){
   ${field('name','text',t('name'),'required')}${field('email','email',t('email'),'required')}${pwField('password',t('password'),'new-password',t('pw_hint'))}
   <label class="fld"><span>${t('role')}</span><select name="role"><option value="employee">employee</option><option value="admin">admin</option></select></label>
   <p class="ferr" id="ferr" role="alert"></p><div><button class="btn" type="submit">${t('add_user')}</button></div></form></div></div></div>`}
+
+function pAccount(){
+ return `<div class="page-h"><div><h1>${t('account')}</h1></div></div>
+ <div class="cols even"><div class="panel"><div class="panel-h"><h3>${esc(S.name)}</h3></div><div class="panel-b"><div class="kv">
+  <div><small>${t('name')}</small><span>${esc(S.name)}</span></div><div><small>${t('email')}</small><span>${esc(me())}</span></div><div><small>${t('role')}</small><span>${esc(S.role)}</span></div></div></div></div>
+ <div class="panel"><div class="panel-h"><h3>${t('mail_h')}</h3></div><div class="panel-b"><p style="color:var(--muted);margin-bottom:14px">${t('mail_p')}</p>
+  <ul class="ticks"><li>${t('mail_login')}</li><li>${t('mail_receipts')}</li><li>${t('mail_details')}</li></ul>
+  <div class="actions"><button class="btn" data-act="resendMail">${t('resend_mail')}</button><button class="btn ghost" data-act="testMail">${t('test_mail')}</button><button class="btn ghost" data-act="mailDone">${t('mail_done')}</button></div></div></div></div>`}
+
+/* ---------- receipt ---------- */
+function receiptHTML(r,emailed){
+ return `<div id="receiptPrint" class="rcpt"><div class="rcpt-h">${logo()}<div><b>${t('app')}</b><small>${t('receipt_title')} #${esc(r.id)}</small></div></div>
+ <div class="kv"><div><small>${t('patient')}</small><span>${esc(r.patient_name)}</span></div><div><small>${t('date')}</small><span>${esc(fmtD(r.created_at))}</span></div>
+ <div><small>${t('method')}</small><span>${esc(r.method||'')}</span></div><div><small>${t('received_by')}</small><span>${esc(r.created_by||'')}</span></div></div>
+ <div class="rcpt-amt"><small>${t('amount')}</small><b>${money(r.amount)}</b></div></div>
+ ${emailed&&emailed.length?`<p class="hint" style="margin-top:14px">${t('emailed_to')}: <b>${emailed.map(x=>esc(x)).join(', ')}</b></p>`:''}
+ <div class="drawer-f" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn" data-act="print">${t('print')}</button>${r.receipt_url?`<a class="btn ghost" target="_blank" rel="noopener" href="${esc(r.receipt_url)}">${t('download')}</a>`:''}<button class="btn ghost" data-act="emailReceipt" data-id="${esc(r.id)}">${ic('mail',16)}${t('email_again')}</button></div>`}
+async function refreshPays(){
+ try{S.pays=await api('/payments')}catch(e){return}
+ const b=$('#paybody');if(b)b.innerHTML=payRows();
+ const tt=$('#paytot');if(tt)tt.textContent=money(S.pays.reduce((a,x)=>a+Number(x.amount),0))}
 
 /* ---------- drawer ---------- */
 function openDrawer(title,body){
@@ -562,6 +607,13 @@ const ACT={
  payFor:b=>openDrawer(t('record_payment'),payForm(b.dataset.id)),
  pickWeek:b=>{S.wk=+b.dataset.w;$('#wkbox').innerHTML=weeksHTML()},
  token:async b=>{try{const r=await api('/patients/'+b.dataset.id+'/token',{method:'POST'});toast(t('token_made',{n:r.token_no,p:pname(S.detail)}))}catch(e){toast(e.message,'err')}},
+ print:()=>window.print(),
+ mailDone:()=>{store.set(mailKey(),'1');const m=$('#mailbar');if(m)m.remove()},
+ resendMail:async()=>{try{await api('/auth/notifications/resend',{method:'POST'});toast(t('mail_resent',{e:me()}))}catch(e){toast(e.message,'err')}},
+ testMail:async()=>{try{await api('/auth/notifications/test',{method:'POST'});toast(t('mail_test_sent',{e:me()}))}catch(e){toast(e.message,'err')}},
+ receipt:async b=>{try{const r=await api('/payments/'+b.dataset.id+'/receipt');openDrawer(t('receipt_title')+' #'+r.id,receiptHTML(r))}catch(e){toast(e.message,'err')}},
+ emailReceipt:async b=>{b.disabled=true;try{const r=await api('/payments/'+b.dataset.id+'/email',{method:'POST'});toast(t('sent_to',{e:r.emailed_to.join(', ')}))}catch(e){toast(e.message,'err')}b.disabled=false},
+ emailPatient:async b=>{b.disabled=true;try{const r=await api('/patients/'+b.dataset.id+'/email',{method:'POST'});toast(r.patient_has_email?t('sent_to',{e:r.emailed_to.join(', ')}):t('no_patient_email'))}catch(e){toast(e.message,'err')}b.disabled=false},
  status:async b=>{b.disabled=true;try{await api('/queue/'+b.dataset.id,{json:{status:b.dataset.s},method:'PATCH'});await refreshQueue()}catch(e){toast(e.message,'err');b.disabled=false}}
 };
 document.addEventListener('click',e=>{
@@ -592,7 +644,7 @@ const FORMS={
  async patient(f,btn){
   const fd=new FormData(f),d=Object.fromEntries(fd);d.age=+d.age;d.diseases=fd.getAll('diseases');d.email=(d.email||'').trim()||null;
   const r=await busy(btn,'…',()=>api('/patients',{json:d}));
-  closeDrawer();toast(t('patient_saved'));go('#/patients/'+r.id)},
+  closeDrawer();toast(t('patient_saved')+(r.emailed_to?' · '+t('sent_to',{e:r.emailed_to}):''));go('#/patients/'+r.id)},
  async week(f,btn){
   const fd=new FormData(f),file=fd.get('photo');
   if(file&&file.size){fd.set('photo',await shrink(file),'photo.jpg')}else fd.delete('photo');
@@ -607,8 +659,9 @@ const FORMS={
   const d=Object.fromEntries(new FormData(f)),p=S.pts.find(x=>String(x.id)===d.pid);
   if(!p)return ferr(t('pick_patient'));
   const r=await busy(btn,'…',()=>api('/payments',{json:{patient_id:p.id,patient_name:pname(p),patient_email:p.email||null,amount:+d.amount,method:d.method}}));
-  closeDrawer();toast(`${esc(t('pay_saved'))} <a target="_blank" rel="noopener" href="${esc(r.receipt_url)}">${esc(t('receipt_link',{n:r.id}))}</a>`,'ok',true);
-  if(route().page==='payments')render()},
+  const row={id:r.id,patient_name:pname(p),amount:+d.amount,method:d.method,created_at:r.created_at,created_by:me(),receipt_url:r.receipt_url};
+  openDrawer(t('pay_done'),receiptHTML(row,r.emailed_to));
+  if(route().page==='payments')refreshPays()},
  async user(f,btn){
   const d=Object.fromEntries(new FormData(f));d.email=d.email.trim().toLowerCase();d.name=d.name.trim();
   if(d.password.length<8)return ferr(t('pw_hint')+'.');
