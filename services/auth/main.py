@@ -100,3 +100,17 @@ def login(b: Login):
 @app.get("/auth/users")
 def users(_=Depends(admin_only)):
     return read("SELECT id,email,name,role,created_at FROM users ORDER BY id")
+
+
+@app.post("/auth/notifications/resend")
+def resend_confirmation(u=Depends(current_user)):
+    """Ask AWS to send the 'Confirm subscription' email again (needed once per address)."""
+    subscribe(u["sub"])
+    return {"ok": True, "email": u["sub"]}
+
+
+@app.post("/auth/notifications/test")
+def test_email(u=Depends(current_user)):
+    notify(u["sub"], "Test email - Hospital Management",
+           "This is a test. If you can read this, email alerts and payment receipts will reach you.")
+    return {"ok": True, "email": u["sub"]}
