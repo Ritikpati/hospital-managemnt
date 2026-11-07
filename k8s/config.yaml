@@ -1,18 +1,18 @@
-# Replace ACCOUNT_ID (and region if changed). Values = terraform outputs.
+# Replace 106220368686 (and region if changed). Values = terraform outputs.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: hms-sa
   namespace: hms
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/hms-app
+    eks.amazonaws.com/role-arn: arn:aws:iam::106220368686:role/hms-app
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: hms-config, namespace: hms}
 data:
   AWS_REGION: us-east-1
-  SNS_TOPIC_ARN: arn:aws:sns:us-east-1:ACCOUNT_ID:hms-notifications
-  USER_BUCKET: hms-ACCOUNT_ID-user-data
-  RECEIPT_BUCKET: hms-ACCOUNT_ID-payment-receipts
-  PHOTO_BUCKET: hms-ACCOUNT_ID-patient-photos
+  SNS_TOPIC_ARN: arn:aws:sns:us-east-1:106220368686:hms-notifications
+  USER_BUCKET: hms-106220368686-user-data
+  RECEIPT_BUCKET: hms-106220368686-payment-receipts
+  PHOTO_BUCKET: hms-106220368686-patient-photos
